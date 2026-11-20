@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: tsuriko-chart
+    name: windtide
     runtime: node
     plan: free
     region: singapore
@@ -11,8 +11,6 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # Google マップを使う場合のみ（未設定なら国土地理院タイルで表示）
-      # - key: GOOGLE_MAPS_API_KEY
-      #   sync: false
-      # - key: GOOGLE_MAPS_MAP_ID
-      #   sync: false
+      # 潮見帖などから iframe 埋め込みする場合のみ（許可オリジンをスペース区切り）
+      # - key: EMBED_FRAME_ANCESTORS
+      #   value: "'self' https://fishingportjapan.onrender.com"

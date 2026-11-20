@@ -1,12 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "潮見帖 — 全国の漁港・港湾の釣り情報",
+  title: "WindTide — 潮見帖フォーキャスト",
   description:
-    "全国3,900以上の漁港・港湾を地図から探し、今の時期に港内・堤防で釣れる魚、天気・風・タイドグラフ、現在地からの距離とルートをまとめて確認できる釣り情報アプリ。船釣りは対象外。",
-  keywords: ["釣り", "漁港", "港湾", "潮汐", "タイドグラフ", "釣りもの", "堤防"],
+    "全国3,925の漁港・港湾を選び、風（風向・風速・突風）と潮位（タイドグラフ・満干潮・潮回り）を週間・月間で確認。CSV・PDFで持ち出せる予報アプリです。",
+  keywords: ["漁港", "潮汐", "タイドグラフ", "風予報", "満潮", "干潮", "潮回り"],
   robots: { index: true, follow: true },
 };
 
