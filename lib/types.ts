@@ -1,5 +1,7 @@
 export type PortKind = "f" | "h";
 
+export type ForecastView = "week" | "month";
+
 export interface Port {
   i: string;
   k: PortKind;
@@ -32,50 +34,12 @@ export interface PortDataset {
   ports: Port[];
 }
 
-export interface FishRegion {
-  id: string;
-  name: string;
-  prefectures: string[];
-}
-
-export interface Species {
-  id: string;
-  name: string;
-  kana: string;
-  aliases: string[];
-  group: string;
-  size: string;
-  methods: string[];
-  baits: string[];
-  tackle: string;
-  tip: string;
-  caution?: string;
-  season: Record<string, number[]>;
-  peak?: Record<string, number[]>;
-  rating: number;
-}
-
-export interface FishDataset {
-  schemaVersion: number;
-  updatedAt: string;
-  description: string;
-  regions: FishRegion[];
-  groups: string[];
-  ratingGuide: Record<string, string>;
-  species: Species[];
-}
-
-export interface SeasonMatch {
-  species: Species;
-  rating: number;
-  isPeak: boolean;
-}
-
 export interface TideExtreme {
   t: string;
   hours: number;
   h: number;
   type: "high" | "low";
+  estimated?: boolean;
 }
 
 export interface TidePoint {
@@ -94,29 +58,37 @@ export interface TideInfo {
   tideScore: number;
 }
 
-export interface WeatherHour {
+export interface HourPoint {
   t: string;
-  temp: number | null;
   wind: number | null;
   windDir: number | null;
   gust: number | null;
+  temp: number | null;
+  precip: number | null;
   precipProb: number | null;
   wave: number | null;
   seaLevel: number | null;
   code: number | null;
 }
 
-export interface WeatherDay {
+export interface DaySummary {
   date: string;
+  tideName: string;
+  moonAge: number;
+  highs: { t: string; h: number }[];
+  lows: { t: string; h: number }[];
+  maxWind: number | null;
+  dominantWindDir: number | null;
+  maxGust: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+  inForecastRange: boolean;
+  estimated: boolean;
   code: number | null;
   tempMax: number | null;
   tempMin: number | null;
   precipProb: number | null;
-  windMax: number | null;
-  windDir: number | null;
   waveMax: number | null;
-  sunrise: string | null;
-  sunset: string | null;
 }
 
 export interface WeatherResponse {
@@ -135,19 +107,60 @@ export interface WeatherResponse {
     wave: number | null;
     seaTemp: number | null;
   };
-  hourly: WeatherHour[];
-  daily: WeatherDay[];
+  hourly: HourPoint[];
+  daily: DaySummary[];
   tide: TideInfo;
   tideAvailable: boolean;
+  forecastDays: number;
 }
 
-export interface RouteResponse {
-  mode: string;
-  distanceKm: number;
-  durationMin: number;
-  geometry: [number, number][];
-  source: "osrm" | "straight";
-  message?: string;
+export interface JmaWeeklyDay {
+  date: string;
+  code: number | null;
+  text: string;
+  pop: number | null;
+  tempMin: number | null;
+  tempMax: number | null;
+  reliability: string;
+}
+
+export interface JmaWeekly {
+  office: string;
+  areaName: string;
+  reportDatetime: string;
+  days: JmaWeeklyDay[];
+}
+
+export interface JmaMarinePeriod {
+  label: string;
+  windDir: string;
+  windSpeed: number | null;
+  weather: string;
+  visibilityKm: number | null;
+  waveHeight: number | null;
+  sentence: string;
+}
+
+export interface JmaMarine {
+  areaCode: string;
+  areaName: string;
+  office: string;
+  reportDatetime: string;
+  periods: JmaMarinePeriod[];
+}
+
+export interface JmaWarning {
+  name: string;
+  code: string;
+  areaName: string;
+  areaCode: string;
+}
+
+export interface JmaResponse {
+  weekly: JmaWeekly | null;
+  marine: JmaMarine | null;
+  warnings: JmaWarning[];
+  area: { seaAreaCode: string; seaAreaName: string };
 }
 
 export interface LatLon {

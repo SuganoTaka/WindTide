@@ -25,17 +25,3 @@ export function formatCoord(lat: number, lon: number): string {
   const ew = lon >= 0 ? "E" : "W";
   return `${Math.abs(lat).toFixed(4)}${ns} ${Math.abs(lon).toFixed(4)}${ew}`;
 }
-
-export function googleMapsDirectionsUrl(from: LatLon | null, to: LatLon) {
-  const params = new URLSearchParams({
-    api: "1",
-    destination: `${to.lat},${to.lon}`,
-    travelmode: "driving",
-  });
-  if (from) params.set("origin", `${from.lat},${from.lon}`);
-  return `https://www.google.com/maps/dir/?${params.toString()}`;
-}
-
-export function googleMapsPlaceUrl(p: LatLon) {
-  return `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`;
-}

@@ -1,7 +1,8 @@
-import type { TideExtreme, TideInfo, TidePoint } from "./types";
+import type { DaySummary, HourPoint, TideExtreme, TideInfo, TidePoint } from "./types";
 
 const SYNODIC = 29.530588853;
 const NEW_MOON_REF = Date.UTC(2000, 0, 6, 18, 14, 0);
+const JST_OFFSET_MS = 9 * 3600 * 1000;
 
 export function moonAge(nowMs: number): number {
   const days = (nowMs - NEW_MOON_REF) / 86400000;
@@ -84,34 +85,32 @@ export function dailyRanges(points: TidePoint[]): Map<string, number> {
 }
 
 /**
- * 潮回りは月齢で判定する（日本の潮汐表と同じ考え方）。
- * 大潮 = 朔・望の前後、小潮 = 上弦・下弦の前後。
+ * 潮回りは月齢で判定する（仕様書 4.3）。
+ * 0〜2 大潮 / 3〜7 中潮 / 8〜10 小潮 / 11〜13 中潮 / 14〜16 大潮 /
+ * 17〜20 中潮 / 21〜24 小潮 / 25〜26 長潮 / 27〜28 若潮 / 29 中潮
  */
-export function classifyTide(moonAgeDays: number) {
-  const a = moonAgeDays % 29.530588853;
-  if (a < 3 || (a >= 14 && a < 17)) return { name: "大潮", score: 5 };
-  if (a < 8 || (a >= 11 && a < 14) || (a >= 17 && a < 21) || a >= 29)
-    return { name: "中潮", score: 4 };
-  if (a < 11 || (a >= 21 && a < 25)) return { name: "小潮", score: 3 };
+export function classifyTide(moonAgeDays: number): { name: string; score: number } {
+  const wrapped = moonAgeDays % SYNODIC;
+  const a = wrapped < 0 ? wrapped + SYNODIC : wrapped;
+  if (a < 3) return { name: "大潮", score: 5 };
+  if (a < 8) return { name: "中潮", score: 4 };
+  if (a < 11) return { name: "小潮", score: 3 };
+  if (a < 14) return { name: "中潮", score: 4 };
+  if (a < 17) return { name: "大潮", score: 5 };
+  if (a < 21) return { name: "中潮", score: 4 };
+  if (a < 25) return { name: "小潮", score: 3 };
   if (a < 27) return { name: "長潮", score: 2 };
-  return { name: "若潮", score: 2 };
+  if (a < 29) return { name: "若潮", score: 2 };
+  return { name: "中潮", score: 4 };
 }
 
-export function tideNameHint(name: string): string {
-  switch (name) {
-    case "大潮":
-      return "潮がよく動く。回遊魚の食いが立つ日。";
-    case "中潮":
-      return "釣りやすく、1日を通して狙いやすい。";
-    case "小潮":
-      return "潮の動きは緩やか。朝マズメ・夕マズメ重視で。";
-    case "長潮":
-      return "潮が動かず厳しめ。時合は短時間に集中する。";
-    case "若潮":
-      return "潮止まりが長い。根魚狙いに切り替えたい。";
-    default:
-      return "";
-  }
+export function moonAgeAtLocal(local: string, offsetSeconds = 32400): number {
+  return moonAge(localToMs(local) - offsetSeconds * 1000);
+}
+
+export function tideNameOfDate(date: string, offsetSeconds = 32400): { name: string; moonAge: number } {
+  const age = moonAgeAtLocal(`${date}T12:00`, offsetSeconds);
+  return { name: classifyTide(age).name, moonAge: Math.round(age * 10) / 10 };
 }
 
 export function buildTideInfo(
@@ -138,9 +137,189 @@ export function buildTideInfo(
   };
 }
 
-const JST_OFFSET_MS = 9 * 3600 * 1000;
+export interface DailyMeta {
+  date: string;
+  code: number | null;
+  tempMax: number | null;
+  tempMin: number | null;
+  precipProb: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+  waveMax: number | null;
+}
 
-/** 日本時間(Asia/Tokyo)の現在時刻をローカル時刻文字列で返す */
+function dominantDir(hours: HourPoint[]): number | null {
+  const bins = new Array(16).fill(0) as number[];
+  for (const h of hours) {
+    if (h.windDir == null || h.wind == null) continue;
+    const idx = Math.round((((h.windDir % 360) + 360) % 360) / 22.5) % 16;
+    bins[idx] += 1 + h.wind;
+  }
+  const max = Math.max(...bins);
+  if (max <= 0) return null;
+  const idx = bins.indexOf(max);
+  return idx * 22.5;
+}
+
+/** 日別サマリを作る（16日分の実データ） */
+export function buildDailySummaries(
+  hourly: HourPoint[],
+  extremes: TideExtreme[],
+  meta: DailyMeta[],
+  offsetSeconds = 32400
+): DaySummary[] {
+  const byDate = new Map<string, HourPoint[]>();
+  for (const h of hourly) {
+    const d = h.t.slice(0, 10);
+    const list = byDate.get(d);
+    if (list) list.push(h);
+    else byDate.set(d, [h]);
+  }
+
+  const exByDate = new Map<string, TideExtreme[]>();
+  for (const e of extremes) {
+    if (e.estimated) continue;
+    const d = e.t.slice(0, 10);
+    const list = exByDate.get(d);
+    if (list) list.push(e);
+    else exByDate.set(d, [e]);
+  }
+
+  return meta.map((m) => {
+    const hours = byDate.get(m.date) ?? [];
+    const winds = hours.map((h) => h.wind).filter((v): v is number => v != null);
+    const gusts = hours.map((h) => h.gust).filter((v): v is number => v != null);
+    const ex = (exByDate.get(m.date) ?? []).slice().sort((a, b) => a.t.localeCompare(b.t));
+    const tide = tideNameOfDate(m.date, offsetSeconds);
+    return {
+      date: m.date,
+      tideName: tide.name,
+      moonAge: tide.moonAge,
+      highs: ex.filter((e) => e.type === "high").map((e) => ({ t: e.t, h: e.h })),
+      lows: ex.filter((e) => e.type === "low").map((e) => ({ t: e.t, h: e.h })),
+      maxWind: winds.length ? Math.max(...winds) : null,
+      dominantWindDir: dominantDir(hours),
+      maxGust: gusts.length ? Math.max(...gusts) : null,
+      sunrise: m.sunrise,
+      sunset: m.sunset,
+      inForecastRange: true,
+      estimated: false,
+      code: m.code,
+      tempMax: m.tempMax,
+      tempMin: m.tempMin,
+      precipProb: m.precipProb,
+      waveMax: m.waveMax,
+    };
+  });
+}
+
+/**
+ * 予報範囲（16日）より先の満干を、直近の極値間隔から外挿する（仕様 4.3 / タスク13）。
+ * 返す極値は estimated=true。
+ */
+export function projectExtremes(extremes: TideExtreme[], lastDate: string, untilDate: string): TideExtreme[] {
+  const measured = extremes.filter((e) => !e.estimated);
+  if (!measured.length) return [];
+  const highs = measured.filter((e) => e.type === "high");
+  const lows = measured.filter((e) => e.type === "low");
+  if (!highs.length || !lows.length) return [];
+
+  const lastMs = localToMs(extremes[extremes.length - 1]?.t ?? measured[measured.length - 1].t);
+  const startMs = Math.max(lastMs, localToMs(`${lastDate}T00:00`));
+  const endMs = localToMs(`${untilDate}T23:59`);
+
+  const out: TideExtreme[] = [];
+  const project = (list: TideExtreme[], type: "high" | "low") => {
+    if (list.length < 2) return;
+    const recent = list.slice(-6);
+    const intervals: number[] = [];
+    for (let i = 1; i < recent.length; i++) {
+      intervals.push(localToMs(recent[i].t) - localToMs(recent[i - 1].t));
+    }
+    const interval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const heights = recent.slice(-3).map((e) => e.h);
+    const height = heights.reduce((a, b) => a + b, 0) / heights.length;
+    let tMs = localToMs(recent[recent.length - 1].t) + interval;
+    while (tMs <= endMs) {
+      if (tMs > startMs) {
+        out.push({
+          t: msToLocal(Math.round(tMs / 60000) * 60000),
+          hours: new Date(tMs).getUTCHours() + new Date(tMs).getUTCMinutes() / 60,
+          h: Math.round(height * 100) / 100,
+          type,
+          estimated: true,
+        });
+      }
+      tMs += interval;
+    }
+  };
+  project(highs, "high");
+  project(lows, "low");
+  return out.sort((a, b) => a.t.localeCompare(b.t));
+}
+
+/**
+ * 実データの日別サマリを30日分に拡張する。17日目以降は満干を概算し、
+ * inForecastRange=false / estimated=true を立てる。
+ */
+export function extendDailySummaries(
+  measured: DaySummary[],
+  extremes: TideExtreme[],
+  startDate: string,
+  totalDays = 30,
+  offsetSeconds = 32400
+): DaySummary[] {
+  const startMs = localToMs(`${startDate}T00:00`);
+  const lastMeasuredDate = measured.length ? measured[measured.length - 1].date : startDate;
+  const lastTideDate = extremes.length ? extremes[extremes.length - 1].t.slice(0, 10) : lastMeasuredDate;
+  const lastDate = msToLocal(startMs + (totalDays - 1) * 86400000).slice(0, 10);
+  const projected = projectExtremes(extremes, lastTideDate, lastDate);
+
+  const fill = (d: DaySummary): DaySummary => {
+    if (d.highs.length || d.lows.length) return d;
+    const ex = projected.filter((e) => e.t.slice(0, 10) === d.date);
+    if (!ex.length) return d;
+    return {
+      ...d,
+      highs: ex.filter((e) => e.type === "high").map((e) => ({ t: e.t, h: e.h })),
+      lows: ex.filter((e) => e.type === "low").map((e) => ({ t: e.t, h: e.h })),
+      estimated: true,
+    };
+  };
+
+  const out = measured.map(fill);
+  const known = new Set(measured.map((d) => d.date));
+
+  for (let i = 0; i < totalDays; i++) {
+    const date = msToLocal(startMs + i * 86400000).slice(0, 10);
+    if (known.has(date)) continue;
+    const tide = tideNameOfDate(date, offsetSeconds);
+    const ex = projected.filter((e) => e.t.slice(0, 10) === date);
+    out.push({
+      date,
+      tideName: tide.name,
+      moonAge: tide.moonAge,
+      highs: ex.filter((e) => e.type === "high").map((e) => ({ t: e.t, h: e.h })),
+      lows: ex.filter((e) => e.type === "low").map((e) => ({ t: e.t, h: e.h })),
+      maxWind: null,
+      dominantWindDir: null,
+      maxGust: null,
+      sunrise: null,
+      sunset: null,
+      inForecastRange: false,
+      estimated: ex.length > 0,
+      code: null,
+      tempMax: null,
+      tempMin: null,
+      precipProb: null,
+      waveMax: null,
+    });
+  }
+
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out.slice(0, totalDays);
+}
+
 export function jstNowLocal(d = new Date()): string {
   return msToLocal(d.getTime() + JST_OFFSET_MS);
 }
@@ -162,7 +341,17 @@ export function dayLabel(local: string, todayLocal = jstNowLocal()): string {
   return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 }
 
+const WEEKDAY = ["日", "月", "火", "水", "木", "金", "土"];
+
 export function weekdayJa(local: string): string {
   const d = new Date(`${local.slice(0, 10)}T00:00:00Z`);
-  return ["日", "月", "火", "水", "木", "金", "土"][d.getUTCDay()];
+  return WEEKDAY[d.getUTCDay()];
+}
+
+export function addDays(date: string, days: number): string {
+  return msToLocal(localToMs(`${date}T00:00`) + days * 86400000).slice(0, 10);
+}
+
+export function monthLabel(date: string): string {
+  return `${Number(date.slice(5, 7))}月`;
 }

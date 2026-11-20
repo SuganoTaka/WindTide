@@ -6,6 +6,10 @@
 
 リポジトリ直下に `package.json`、`app/`、`render.yaml` が**直接**並ぶようにアップロードしてください（フォルダを入れ子にしない）。
 
+> **重要**: 既存リポジトリへ「上書きアップロード」すると、古いファイル（`components/MapView.tsx`、
+> `components/LeafletMap.tsx`、`app/api/fish` など）が残り、ビルドが `Can't resolve 'leaflet'` で失敗します。
+> 新規リポジトリに本フォルダの中身だけをアップロードするか、残っている古いファイルを削除してください。
+
 ## 2. Render で公開
 
 1. https://render.com にサインイン（GitHub 連携）
@@ -17,7 +21,7 @@
 | 項目 | 値 |
 | --- | --- |
 | Language / Runtime | Node |
-| Build Command | `npm install --no-audit --no-fund && npm run build` |
+| Build Command | `npm install --no-audit --no-fund --registry=https://registry.npmjs.org && npm run build` |
 | Start Command | `npm start` |
 | Health Check Path | `/` |
 | Plan | Free |

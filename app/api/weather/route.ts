@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cacheGet, cacheSet, fetchJson, parseLatLon } from "@/lib/api-cache";
+import { TTL, cacheGet, cacheSet, fetchJson, parseLatLon } from "@/lib/api-cache";
 import { buildWeatherPayload, openMeteoUrls, type OpenMeteoRaw } from "@/lib/weather-build";
 import type { WeatherResponse } from "@/lib/types";
 
@@ -41,6 +41,6 @@ export async function GET(req: Request) {
     loc.lon
   );
 
-  cacheSet(key, payload);
+  cacheSet(key, payload, TTL.weather);
   return NextResponse.json(payload);
 }

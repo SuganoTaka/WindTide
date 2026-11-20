@@ -1,13 +1,22 @@
-import { buildTideInfo, msToLocal } from "./tide";
-import type { TidePoint, WeatherDay, WeatherHour, WeatherResponse } from "./types";
+import {
+  buildDailySummaries,
+  buildTideInfo,
+  extendDailySummaries,
+  findExtremes,
+  msToLocal,
+  type DailyMeta,
+} from "./tide";
+import type { DaySummary, HourPoint, TidePoint, WeatherResponse } from "./types";
 
 export interface OpenMeteoRaw {
   utc_offset_seconds?: number;
   timezone?: string;
   current?: Record<string, number>;
-  hourly?: Record<string, (number | null)[]>;
+  hourly?: Record<string, (string | number | null)[]>;
   daily?: Record<string, (string | number | null)[]>;
 }
+
+export const FORECAST_DAYS = 16;
 
 export const FORECAST_PARAMS = {
   current: [
@@ -23,6 +32,7 @@ export const FORECAST_PARAMS = {
   ],
   hourly: [
     "temperature_2m",
+    "precipitation",
     "precipitation_probability",
     "weather_code",
     "wind_speed_10m",
@@ -35,6 +45,7 @@ export const FORECAST_PARAMS = {
     "temperature_2m_min",
     "precipitation_probability_max",
     "wind_speed_10m_max",
+    "wind_gusts_10m_max",
     "wind_direction_10m_dominant",
     "sunrise",
     "sunset",
@@ -48,7 +59,7 @@ export function openMeteoUrls(lat: number, lon: number) {
     longitude: String(lon),
     timezone: "Asia/Tokyo",
     wind_speed_unit: "ms",
-    forecast_days: "7",
+    forecast_days: String(FORECAST_DAYS),
   });
   return {
     forecast:
@@ -85,16 +96,17 @@ export function buildWeatherPayload(
   const fh = f.hourly ?? {};
   const mh = m?.hourly ?? {};
 
-  const hourly: WeatherHour[] = times.map((t, i) => {
+  const hourly: HourPoint[] = times.map((t, i) => {
     const mi = marineIdx.get(t);
     return {
       t,
       temp: num(fh.temperature_2m?.[i]),
+      precip: num(fh.precipitation?.[i]),
+      precipProb: num(fh.precipitation_probability?.[i]),
+      code: num(fh.weather_code?.[i]),
       wind: num(fh.wind_speed_10m?.[i]),
       windDir: num(fh.wind_direction_10m?.[i]),
       gust: num(fh.wind_gusts_10m?.[i]),
-      precipProb: num(fh.precipitation_probability?.[i]),
-      code: num(fh.weather_code?.[i]),
       wave: mi === undefined ? null : num(mh.wave_height?.[mi]),
       seaLevel: mi === undefined ? null : num(mh.sea_level_height_msl?.[mi]),
     };
@@ -106,9 +118,11 @@ export function buildWeatherPayload(
 
   const offset = f.utc_offset_seconds ?? 32400;
   const nowLocal = msToLocal(Date.now() + offset * 1000);
+  const startDate = nowLocal.slice(0, 10);
 
   const d = f.daily ?? {};
-  const daily: WeatherDay[] = ((d.time as unknown as string[]) ?? []).map((date, i) => {
+  const dailyTimes = (d.time as unknown as string[]) ?? [];
+  const meta: DailyMeta[] = dailyTimes.map((date, i) => {
     const dayWave = hourly.filter((h) => h.t.slice(0, 10) === date && h.wave != null);
     return {
       date,
@@ -116,13 +130,15 @@ export function buildWeatherPayload(
       tempMax: num(d.temperature_2m_max?.[i]),
       tempMin: num(d.temperature_2m_min?.[i]),
       precipProb: num(d.precipitation_probability_max?.[i]),
-      windMax: num(d.wind_speed_10m_max?.[i]),
-      windDir: num(d.wind_direction_10m_dominant?.[i]),
-      waveMax: dayWave.length ? Math.max(...dayWave.map((h) => h.wave as number)) : null,
       sunrise: (d.sunrise?.[i] as string) ?? null,
       sunset: (d.sunset?.[i] as string) ?? null,
+      waveMax: dayWave.length ? Math.max(...dayWave.map((h) => h.wave as number)) : null,
     };
   });
+
+  const extremes = findExtremes(tidePoints);
+  const measured = buildDailySummaries(hourly, extremes, meta, offset);
+  const daily: DaySummary[] = extendDailySummaries(measured, extremes, startDate, 30, offset);
 
   const cur = f.current ?? {};
   const nowHour = hourly.find((h) => h.t.slice(0, 13) === nowLocal.slice(0, 13)) ?? hourly[0];
@@ -149,5 +165,6 @@ export function buildWeatherPayload(
     daily,
     tide,
     tideAvailable: tidePoints.length > 12,
+    forecastDays: FORECAST_DAYS,
   };
 }
