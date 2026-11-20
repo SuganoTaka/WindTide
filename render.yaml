@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: tsuriko-chart
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install --no-audit --no-fund && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Google マップを使う場合のみ（未設定なら国土地理院タイルで表示）
+      # - key: GOOGLE_MAPS_API_KEY
+      #   sync: false
+      # - key: GOOGLE_MAPS_MAP_ID
+      #   sync: false
