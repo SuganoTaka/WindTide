@@ -42,3 +42,11 @@ Render の **Root Directory** が空（または実際のアプリ直下）に�
 ### ビルドが `npm error Exit handler never called!` で落ちる
 `package-lock.json` の `"resolved"` が社内 npm ミラーを指していると、Render から到達できず失敗します。
 `https://registry.npmjs.org/...` 以外のホストが無いことを確認してください。
+
+本リポジトリの `package-lock.json` は公開レジストリのみを参照するよう正規化済みです。
+再生成する場合:
+
+```bash
+rm package-lock.json
+npm install --package-lock-only --no-audit --no-fund --registry=https://registry.npmjs.org
+```
